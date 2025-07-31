@@ -5,11 +5,11 @@ import { useWs } from "./hooks/useWs";
 function App() {
   const name = useUniqueName(5 * 60 * 1000);
   const url = import.meta.env.VITE_SERVER_URL;
-  const [isReady, m, sendData] = useWs({ url });
+  const [isReady, message, sendData] = useWs({ url });
 
   useEffect(() => {
-    if (m) console.log(m);
-  }, [m]);
+    if (message) console.log(message);
+  }, [message]);
 
   useEffect(() => {
     if (!isReady || !name) return;
