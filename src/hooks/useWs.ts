@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 
 export const useWs = ({
   url,
@@ -30,11 +30,14 @@ export const useWs = ({
     };
   }, [url]);
 
-  const send = (data: string | ArrayBufferLike | Blob | ArrayBufferView) => {
-    if (ws.current && ws.current.readyState === WebSocket.OPEN) {
-      ws.current.send(data);
-    }
-  };
+  const send = useCallback(
+    (data: string | ArrayBufferLike | Blob | ArrayBufferView) => {
+      if (ws.current && ws.current.readyState === WebSocket.OPEN) {
+        ws.current.send(data);
+      }
+    },
+    []
+  );
 
   return [isReady, val, ws.current ? send : undefined];
 };

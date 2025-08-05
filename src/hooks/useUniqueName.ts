@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { ClientJS } from "clientjs";
 import {
   uniqueNamesGenerator,
   adjectives,
@@ -6,67 +7,35 @@ import {
   animals,
 } from "unique-names-generator";
 
-type StoredName = {
-  value: string;
-  expiry: number;
-};
-
-const STORAGE_KEY = "uniqueNameData";
-
-function generateName() {
-  return uniqueNamesGenerator({
-    dictionaries: [adjectives, colors, animals],
-    separator: "-",
-    style: "lowerCase",
-  });
+// Simple hash function to create a numeric seed from the fingerprint
+function hashString(str: string) {
+  let hash = 0;
+  for (let i = 0; i < str.length; i++) {
+    hash = (hash << 5) - hash + str.charCodeAt(i);
+    hash |= 0; // Convert to 32-bit integer
+  }
+  return Math.abs(hash);
 }
 
-export function useUniqueName(ttl: number = 5 * 60 * 1000): string {
+export function useUniqueName(): { name: string; fingerprint: string } {
   const [name, setName] = useState<string>("");
+  const [fingerprint, setFingerprint] = useState<string>("");
 
   useEffect(() => {
-    const now = Date.now();
-    const saved = localStorage.getItem(STORAGE_KEY);
+    const client = new ClientJS();
+    const fp = String(client.getFingerprint()); // Device/browser fingerprint
+    setFingerprint(fp);
 
-    if (saved) {
-      try {
-        const parsed: StoredName = JSON.parse(saved);
-        if (now < parsed.expiry) {
-          setName(parsed.value);
-          return;
-        }
-      } catch {
-        // ignore parse error
-      }
-    }
+    const seed = hashString(fp);
+    const generatedName = uniqueNamesGenerator({
+      dictionaries: [adjectives, colors, animals],
+      separator: "-",
+      style: "lowerCase",
+      seed, // Deterministic output
+    });
 
-    const newName = generateName();
-    const data: StoredName = {
-      value: newName,
-      expiry: now + ttl,
-    };
-
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
-    setName(newName);
-  }, [ttl]);
-
-  // Sync across tabs
-  useEffect(() => {
-    const handleStorage = (e: StorageEvent) => {
-      if (e.key === STORAGE_KEY && e.newValue) {
-        try {
-          const parsed: StoredName = JSON.parse(e.newValue);
-          if (Date.now() < parsed.expiry) {
-            setName(parsed.value);
-          }
-        } catch {
-          // ignore
-        }
-      }
-    };
-    window.addEventListener("storage", handleStorage);
-    return () => window.removeEventListener("storage", handleStorage);
+    setName(generatedName);
   }, []);
 
-  return name;
+  return { name, fingerprint };
 }
