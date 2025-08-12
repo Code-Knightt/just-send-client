@@ -40,22 +40,28 @@ interface RTCStore {
     sendData: SendData
   ) => Promise<void>;
   addIceCandidate: (candidate: RTCIceCandidateInit) => Promise<void>;
-  sendFile: (file: File) => void;
-  closeConnection: () => void;
-
-  // Receiving
+  // SENDING
+  sendFile: (file: File) => void; // backwards compatible
+  sendFiles: (files: File[]) => Promise<void>; // NEW: batch sender
+  // RECEIVING (message pump from onmessage)
   receiveFileMessage: (data: string | ArrayBuffer) => void;
   lastReceivedFile: ReceivedFile | null;
+  receivedFiles: ReceivedFile[]; // NEW: keep history
   setOnFileReceived: (cb: ((f: ReceivedFile) => void) | null) => void;
   onFileReceived: ((f: ReceivedFile) => void) | null;
 
-  // NEW: Progress
-  sendProgress: TransferProgress | null;
-  recvProgress: TransferProgress | null;
+  // Progress
+  sendProgress: TransferProgress | null; // current file (send)
+  recvProgress: TransferProgress | null; // current file (recv)
+  batchSendProgress: TransferProgress | null; // NEW: whole batch
   setOnSendProgress: (cb: ((p: TransferProgress) => void) | null) => void;
   setOnReceiveProgress: (cb: ((p: TransferProgress) => void) | null) => void;
   onSendProgress: ((p: TransferProgress) => void) | null;
   onReceiveProgress: ((p: TransferProgress) => void) | null;
+
+  // Internal sending state
+  isSending: boolean; // NEW: guard
+  closeConnection: (sendData: SendData, reverseSender?: boolean) => void;
 }
 
 // Helper to create a new RTCPeerConnection with ICE handling
@@ -79,7 +85,7 @@ function createPeerConnection(): RTCPeerConnection {
   return conn;
 }
 
-// Internal structure for in-progress receive
+// Internal structure for in-progress receive (single at a time, sequential)
 type IncomingState = {
   name: string;
   size: number;
@@ -87,6 +93,9 @@ type IncomingState = {
   received: number;
   chunks: ArrayBuffer[];
 } | null;
+
+let nextXferId = 1;
+const genXferId = () => `${Date.now()}-${nextXferId++}`;
 
 export const useRTCStore = create<RTCStore>((set, get) => {
   let incoming: IncomingState = null;
@@ -98,16 +107,20 @@ export const useRTCStore = create<RTCStore>((set, get) => {
     dataChannel: null,
 
     lastReceivedFile: null,
+    receivedFiles: [],
     onFileReceived: null,
     setOnFileReceived: (cb) => set({ onFileReceived: cb }),
 
-    // NEW: progress state + callbacks
+    // progress state + callbacks
     sendProgress: null,
     recvProgress: null,
+    batchSendProgress: null,
     onSendProgress: null,
     onReceiveProgress: null,
     setOnSendProgress: (cb) => set({ onSendProgress: cb }),
     setOnReceiveProgress: (cb) => set({ onReceiveProgress: cb }),
+
+    isSending: false,
 
     setPeers: ({ sender, receiver }) => {
       if (sender) set({ sender });
@@ -139,7 +152,7 @@ export const useRTCStore = create<RTCStore>((set, get) => {
         if (event.candidate) {
           sendData(
             JSON.stringify({
-              type: "ice-candidate",
+              type: "ice_candidate",
               candidate: event.candidate,
               to: sender,
             })
@@ -177,7 +190,7 @@ export const useRTCStore = create<RTCStore>((set, get) => {
         if (event.candidate) {
           sendData(
             JSON.stringify({
-              type: "ice-candidate",
+              type: "ice_candidate",
               candidate: event.candidate,
               to: get().sender,
             })
@@ -192,132 +205,223 @@ export const useRTCStore = create<RTCStore>((set, get) => {
       await conn.addIceCandidate(candidate);
     },
 
-    sendFile: (file) => {
+    // Backwards compatible single-file API
+    sendFile: (file: File) => {
+      void get().sendFiles([file]);
+    },
+
+    // NEW: Send multiple files sequentially over one channel
+    sendFiles: async (files: File[]) => {
       const channel = get().dataChannel;
       if (!channel || channel.readyState !== "open") {
         console.error("Channel not open");
         return;
       }
+      if (!files || files.length === 0) return;
+      if (get().isSending) {
+        console.warn("Already sending; ignoring new request.");
+        return;
+      }
 
-      // Tunables
-      const CHUNK_SIZE = 16 * 1024; // 16 KiB works well across routes
-      const BA_LOW = 256 * 1024; // Resume threshold for backpressure (256 KiB)
-      const PROGRESS_INTERVAL_MS = 200; // Throttle progress updates
+      set({ isSending: true });
 
-      // Ensure a sensible threshold (you can tweak higher if links are fast)
+      // Tunables (shared)
+      const CHUNK_SIZE = 16 * 1024; // 16 KiB
+      const BA_LOW = 256 * 1024; // backpressure threshold
+      const PROGRESS_INTERVAL_MS = 200; // throttle UI
+
       channel.bufferedAmountLowThreshold = Math.max(
         channel.bufferedAmountLowThreshold || 0,
         BA_LOW
       );
 
-      // Init progress
-      const start = Date.now();
-      let offset = 0;
-      let lastEmit = 0;
+      // Batch progress
+      const batchStart = Date.now();
+      const batchTotal = files.reduce((sum, f) => sum + (f.size || 0), 0);
+      let batchTransferred = 0;
 
-      const emitProgress = (final = false) => {
-        const now = Date.now();
-        if (!final && now - lastEmit < PROGRESS_INTERVAL_MS) return;
-        lastEmit = now;
-
-        const total = file.size || 0;
-        const transferred = Math.min(offset, total);
+      const emitBatch = (final = false) => {
+        const total = batchTotal;
+        const transferred = batchTransferred;
         const percent =
           total === 0 ? 100 : Math.min(100, (transferred / total) * 100);
-
-        const updated = {
+        const updated: TransferProgress = {
           total,
           transferred,
           percent,
-          startedAt: get().sendProgress?.startedAt ?? start,
-          finishedAt: final ? now : undefined,
+          startedAt: get().batchSendProgress?.startedAt ?? batchStart,
+          finishedAt: final ? Date.now() : undefined,
         };
-        set({ sendProgress: updated });
-        get().onSendProgress?.(updated);
+        set({ batchSendProgress: updated });
       };
 
-      // Send metadata (don’t count toward file bytes)
-      try {
-        channel.send(
-          JSON.stringify({
-            type: "metadata",
-            name: file.name,
-            size: file.size,
-            mime: file.type,
-          })
-        );
-      } catch (e) {
-        console.error("Failed to send metadata:", e);
-        return;
-      }
-
-      set({
-        sendProgress: {
-          total: file.size,
-          transferred: 0,
-          percent: file.size === 0 ? 100 : 0,
-          startedAt: start,
-        },
-      });
-      get().onSendProgress?.(get().sendProgress!);
-
-      const reader = new FileReader();
-
-      const maybeContinue = () => {
-        if (offset >= file.size) {
-          try {
-            channel.send(JSON.stringify({ type: "done" }));
-          } catch (e) {
-            console.error("Failed to send done marker:", e);
+      const sendOne = (file: File, index: number, count: number) =>
+        new Promise<void>((resolve, reject) => {
+          if (!channel || channel.readyState !== "open") {
+            return reject(new Error("Channel not open"));
           }
-          emitProgress(true);
-          return;
-        }
 
-        // Respect backpressure before reading the next slice
-        if (channel.bufferedAmount > channel.bufferedAmountLowThreshold) {
-          channel.onbufferedamountlow = () => {
-            channel.onbufferedamountlow = null;
+          const xferId = genXferId();
+          let offset = 0;
+          let lastEmit = 0;
+          const start = Date.now();
+          let closed = false;
+
+          const emitFile = (final = false) => {
+            const now = Date.now();
+            if (!final && now - lastEmit < PROGRESS_INTERVAL_MS) return;
+            lastEmit = now;
+            const total = file.size || 0;
+            const transferred = Math.min(offset, total);
+            const percent =
+              total === 0 ? 100 : Math.min(100, (transferred / total) * 100);
+            const updated: TransferProgress = {
+              total,
+              transferred,
+              percent,
+              startedAt: get().sendProgress?.startedAt ?? start,
+              finishedAt: final ? now : undefined,
+            };
+            set({ sendProgress: updated });
+            get().onSendProgress?.(updated);
+          };
+
+          const onChannelClose = () => {
+            closed = true;
+            reject(new Error("DataChannel closed during transfer"));
+          };
+
+          const cleanup = () => {
+            if (!channel) return;
+            channel.removeEventListener("close", onChannelClose);
+            // don't touch onbufferedamountlow here — we set/clear per read cycle
+          };
+
+          channel.addEventListener("close", onChannelClose);
+
+          // Send metadata for this file (include index/count for UX; receiver can ignore)
+          try {
+            channel.send(
+              JSON.stringify({
+                type: "metadata",
+                id: xferId,
+                name: file.name,
+                size: file.size,
+                mime: file.type,
+                index,
+                count,
+              })
+            );
+          } catch (e) {
+            cleanup();
+            return reject(e instanceof Error ? e : new Error("metadata send"));
+          }
+
+          // init per-file progress
+          set({
+            sendProgress: {
+              total: file.size,
+              transferred: 0,
+              percent: file.size === 0 ? 100 : 0,
+              startedAt: start,
+            },
+          });
+          get().onSendProgress?.(get().sendProgress!);
+          emitBatch(false);
+
+          const reader = new FileReader();
+
+          const readSlice = (o: number) => {
+            if (closed) return;
+            const end = Math.min(o + CHUNK_SIZE, file.size);
+            reader.readAsArrayBuffer(file.slice(o, end));
+          };
+
+          const maybeContinue = () => {
+            if (closed) return;
+
+            if (offset >= file.size) {
+              try {
+                channel.send(JSON.stringify({ type: "done", id: xferId }));
+              } catch (e) {
+                cleanup();
+                return reject(
+                  e instanceof Error ? e : new Error("done marker send")
+                );
+              }
+              emitFile(true);
+              cleanup();
+              resolve();
+              return;
+            }
+
+            if (channel.bufferedAmount > channel.bufferedAmountLowThreshold) {
+              channel.onbufferedamountlow = () => {
+                channel.onbufferedamountlow = null;
+                readSlice(offset);
+              };
+              return;
+            }
+
             readSlice(offset);
           };
-          return;
+
+          reader.onerror = (err) => {
+            cleanup();
+            reject(err instanceof Error ? err : new Error("FileReader error"));
+          };
+
+          reader.onload = () => {
+            if (closed) return;
+            const buffer = reader.result as ArrayBuffer;
+            const u8 = new Uint8Array(buffer);
+
+            try {
+              channel.send(u8);
+            } catch (e) {
+              cleanup();
+              reject(e instanceof Error ? e : new Error("DataChannel send"));
+              return;
+            }
+
+            offset += u8.byteLength;
+            batchTransferred += u8.byteLength;
+
+            emitFile(false);
+            emitBatch(false);
+            maybeContinue();
+          };
+
+          // start file
+          if (file.size === 0) {
+            // Edge case: empty file — still send a done marker
+            try {
+              channel.send(JSON.stringify({ type: "done", id: xferId }));
+            } catch (e) {
+              cleanup();
+              return reject(
+                e instanceof Error ? e : new Error("done marker send")
+              );
+            }
+            emitFile(true);
+            cleanup();
+            resolve();
+            return;
+          }
+
+          readSlice(0);
+        });
+
+      try {
+        for (let i = 0; i < files.length; i++) {
+          await sendOne(files[i], i, files.length);
         }
-
-        readSlice(offset);
-      };
-
-      const readSlice = (o: number) => {
-        const end = Math.min(o + CHUNK_SIZE, file.size);
-        reader.readAsArrayBuffer(file.slice(o, end));
-      };
-
-      reader.onerror = (err) => console.error("FileReader error:", err);
-
-      reader.onload = () => {
-        const buffer = reader.result as ArrayBuffer;
-        const u8 = new Uint8Array(buffer);
-
-        // Send this chunk; if the channel is congested, we still send the chunk,
-        // but we will *wait* before reading the next one in maybeContinue()
-        try {
-          channel.send(u8);
-        } catch (e) {
-          console.error("DataChannel send error:", e);
-          return;
-        }
-
-        // Advance by actual bytes sent
-        offset += u8.byteLength;
-
-        // Throttled progress tick
-        emitProgress(false);
-
-        // Continue (respecting backpressure before reading next slice)
-        maybeContinue();
-      };
-
-      // Kick off
-      readSlice(0);
+        emitBatch(true);
+      } catch (e) {
+        console.error("Batch send error:", e);
+      } finally {
+        set({ isSending: false });
+      }
     },
 
     receiveFileMessage: (data: string | ArrayBuffer) => {
@@ -345,6 +449,7 @@ export const useRTCStore = create<RTCStore>((set, get) => {
             };
             set({ recvProgress: initProg });
             get().onReceiveProgress?.(initProg);
+
             if (import.meta.env.DEV) {
               console.log(
                 `Receiving file "${incoming.name}" (${incoming.size} bytes, ${incoming.mime})`
@@ -384,7 +489,10 @@ export const useRTCStore = create<RTCStore>((set, get) => {
             set({ recvProgress: finalProg });
             get().onReceiveProgress?.(finalProg);
 
-            set({ lastReceivedFile: file });
+            set((s) => ({
+              lastReceivedFile: file,
+              receivedFiles: [...s.receivedFiles, file],
+            }));
             get().onFileReceived?.(file);
 
             if (import.meta.env.DEV) {
@@ -407,12 +515,9 @@ export const useRTCStore = create<RTCStore>((set, get) => {
         }
 
         // Binary chunk
-        // const toArrayBuffer = (x: ArrayBuffer | Uint8Array): ArrayBuffer =>
-        //   x instanceof ArrayBuffer ? x : x.buffer;
-
         let ab: ArrayBuffer | null = null;
         if (data instanceof ArrayBuffer) ab = data;
-        // @ts-expect-error (handle Uint8Array)
+        // @ts-expect-error handle Uint8Array
         else if (data?.buffer instanceof ArrayBuffer) ab = data.buffer;
 
         if (ab) {
@@ -446,7 +551,7 @@ export const useRTCStore = create<RTCStore>((set, get) => {
       }
     },
 
-    closeConnection: () => {
+    closeConnection: (sendData, reverseSender = false) => {
       const conn = get().connection;
       const channel = get().dataChannel;
       conn?.close();
@@ -455,14 +560,25 @@ export const useRTCStore = create<RTCStore>((set, get) => {
       const last = get().lastReceivedFile;
       if (last?.url) URL.revokeObjectURL(last.url);
 
+      sendData(
+        JSON.stringify({
+          type: "close",
+          sender: reverseSender ? get().receiver : get().sender,
+          receiver: reverseSender ? get().sender : get().receiver,
+        })
+      );
+
       set({
         connection: null,
         dataChannel: null,
         sender: "",
         receiver: "",
         lastReceivedFile: null,
+        receivedFiles: [],
         sendProgress: null,
         recvProgress: null,
+        batchSendProgress: null,
+        isSending: false,
       });
     },
   };

@@ -10,12 +10,16 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@headlessui/react": "^2.2.7",
     "@tailwindcss/vite": "^4.1.11",
     "@types/clientjs": "^0.2.2",
     "@vitejs/plugin-basic-ssl": "^2.1.0",
     "clientjs": "^0.2.1",
+    "framer-motion": "^12.23.12",
+    "lucide-react": "^0.539.0",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
+    "react-hot-toast": "^2.5.2",
     "tailwindcss": "^4.1.11",
     "unique-names-generator": "^4.7.1",
     "zustand": "^5.0.7"
