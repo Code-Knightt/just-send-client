@@ -141,7 +141,7 @@ export default function App() {
             </div>
             <div>
               <h1 className="text-lg sm:text-xl font-semibold tracking-tight">
-                File Share App
+                Just Send
               </h1>
               <p className="text-xs text-slate-500 -mt-0.5">
                 Simple peer-to-peer transfers

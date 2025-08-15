@@ -6,4 +6,12 @@ import basicSsl from "@vitejs/plugin-basic-ssl";
 // https://vite.dev/config/
 export default defineConfig({
   plugins: [react(), tailwindcss(), basicSsl({})],
+  build: {
+    // Ensure environment variables are embedded in the build
+    rollupOptions: {
+      output: {
+        manualChunks: undefined,
+      },
+    },
+  },
 });
