@@ -15,6 +15,7 @@ import { DeviceCloud } from "./components/DeviceCloud";
 import CodeModal from "./components/CodeModal";
 import CodeInputModal from "./components/CodeInputModal";
 import FileModal from "./components/FileModal";
+import DeclarationModal from "./components/DeclarationModal";
 import Toast from "./components/Toast";
 
 import { useWsStore } from "./stores/useWsStore";
@@ -70,11 +71,30 @@ export default function App() {
   const [openFileModal, setOpenFileModal] = useState(false);
   const [code, setCode] = useState<string | undefined>();
   const [query, setQuery] = useState("");
+  const [showDeclaration, setShowDeclaration] = useState(false);
 
   // Initialize name once
   useEffect(() => {
     initializeName();
   }, [initializeName]);
+
+  // Check if declaration should be shown
+  useEffect(() => {
+    const declarationAccepted = localStorage.getItem("declarationAccepted");
+    if (declarationAccepted) {
+      const acceptedTime = parseInt(declarationAccepted);
+      const now = Date.now();
+      const twentyFourHours = 24 * 60 * 60 * 1000; // 24 hours in milliseconds
+
+      // If more than 24 hours have passed since acceptance, show declaration again
+      if (now - acceptedTime > twentyFourHours) {
+        setShowDeclaration(true);
+      }
+    } else {
+      // If no acceptance record exists, show declaration
+      setShowDeclaration(true);
+    }
+  }, []);
 
   const baseUrl = import.meta.env.VITE_SERVER_URL;
   // Initialize WebSocket Connection and register with server
@@ -135,26 +155,58 @@ export default function App() {
 
       {/* Header */}
       <header className="sticky top-0 z-20 backdrop-blur supports-[backdrop-filter]:bg-white/60 bg-white/90 border-b border-slate-200">
-        <div className="mx-auto max-w-5xl px-4 sm:px-6 py-3 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="h-9 w-9 grid place-items-center rounded-xl bg-slate-900 text-white shadow-sm">
-              <HardDrive size={18} />
+        <div className="mx-auto max-w-5xl px-4 sm:px-6 py-3">
+          {/* Desktop layout */}
+          <div className="hidden sm:flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="h-9 w-9 grid place-items-center rounded-xl bg-slate-900 text-white shadow-sm">
+                <HardDrive size={18} />
+              </div>
+              <div>
+                <h1 className="text-xl font-semibold tracking-tight">
+                  Just Send
+                </h1>
+                <p className="text-xs text-slate-500 -mt-0.5">
+                  Simple peer-to-peer transfers
+                </p>
+              </div>
             </div>
-            <div>
-              <h1 className="text-lg sm:text-xl font-semibold tracking-tight">
-                Just Send
-              </h1>
-              <p className="text-xs text-slate-500 -mt-0.5">
-                Simple peer-to-peer transfers
-              </p>
+            <div className="flex items-center gap-3">
+              <StatusBadge state={connectionState} />
+              <span className="inline-flex items-center gap-2 rounded-full bg-slate-100 px-3 py-1 text-sm ring-1 ring-slate-200">
+                <Wifi className="text-slate-500" size={16} />
+                <span className="font-medium">{name}</span>
+              </span>
             </div>
           </div>
-          <div className="flex items-center gap-3">
-            <StatusBadge state={connectionState} />
-            <span className="hidden sm:inline-flex items-center gap-2 rounded-full bg-slate-100 px-3 py-1 text-sm ring-1 ring-slate-200">
-              <Wifi className="text-slate-500" size={16} />
-              <span className="font-medium">{name}</span>
-            </span>
+
+          {/* Mobile layout */}
+          <div className="sm:hidden space-y-3">
+            {/* Top row: Logo and title */}
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="h-8 w-8 grid place-items-center rounded-lg bg-slate-900 text-white shadow-sm">
+                  <HardDrive size={16} />
+                </div>
+                <div>
+                  <h1 className="text-lg font-semibold tracking-tight">
+                    Just Send
+                  </h1>
+                  <p className="text-xs text-slate-500 -mt-0.5">
+                    Simple peer-to-peer transfers
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {/* Bottom row: Status and name */}
+            <div className="flex items-center justify-between gap-2">
+              <StatusBadge state={connectionState} />
+              <span className="inline-flex items-center gap-1.5 rounded-full bg-slate-100 px-2.5 py-1 text-xs ring-1 ring-slate-200 min-w-0">
+                <Wifi className="text-slate-500 flex-shrink-0" size={14} />
+                <span className="font-medium truncate">{name}</span>
+              </span>
+            </div>
           </div>
         </div>
       </header>
@@ -264,6 +316,11 @@ export default function App() {
       </main>
 
       {/* Modals / overlays */}
+      <DeclarationModal
+        isOpen={showDeclaration}
+        onAccept={() => setShowDeclaration(false)}
+      />
+
       <Transition show={code !== undefined} as={Fragment}>
         <CodeModal
           code={code}
