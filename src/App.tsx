@@ -77,16 +77,9 @@ export default function App() {
   }, [initializeName]);
 
   const baseUrl = import.meta.env.VITE_SERVER_URL;
-  const token = import.meta.env.VITE_WS_SHARED_SECRET;
-  const wsUrl = token
-    ? `${baseUrl}${baseUrl.includes("?") ? "&" : "?"}token=${encodeURIComponent(
-        token
-      )}`
-    : baseUrl;
-
   // Initialize WebSocket Connection and register with server
   const { connectionFailed, hasConnected } = useWsConnection({
-    url: wsUrl,
+    url: baseUrl,
     name,
   });
 
