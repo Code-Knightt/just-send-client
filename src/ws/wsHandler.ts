@@ -26,6 +26,7 @@ interface OfferMessage extends Message {
 interface AnswerMessage extends Message {
   type: "answer";
   sdp?: string;
+  code?: string;
 }
 
 interface IceMessage extends Message {
@@ -67,7 +68,9 @@ export function useWsMessageRouter({
 
       const message = data as OfferMessage;
       setPeers({ sender: message.sender, receiver: message.receiver });
+
       try {
+        // Receiver prompts for the verification code
         const code = await promptForCode();
 
         const payload: RTCSessionDescriptionInit = {
@@ -76,6 +79,7 @@ export function useWsMessageRouter({
         };
 
         const answer = await handleOffer(payload, message.sender, sendData);
+        // Include the code in the answer message
         sendData(JSON.stringify({ ...message, ...answer, code }));
         setOpenFileModal(true);
       } catch (e) {
@@ -187,7 +191,6 @@ export function useWsMessageRouter({
       }
 
       if (!parsed || typeof parsed !== "object" || !("type" in parsed)) return;
-      console.log("Type: ", parsed.type);
 
       const type = (parsed as { type: string }).type;
       if (typeof type === "string" && type in handlers) {

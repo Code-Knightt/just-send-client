@@ -295,6 +295,5 @@ export default function App() {
     </div>
   );
 }
-
 // hook import lives at the top with others
 import useCodePrompt from "./hooks/useCodePrompt";

@@ -133,8 +133,12 @@ export const useRTCStore = create<RTCStore>((set, get) => {
       const conn = createPeerConnection();
       const channel = conn.createDataChannel("fileChannel");
       channel.binaryType = "arraybuffer";
-      channel.onopen = () => console.log("DataChannel open");
-      channel.onclose = () => console.log("DataChannel closed");
+      channel.onopen = () => {
+        if (import.meta.env.DEV) console.log("DataChannel open");
+      };
+      channel.onclose = () => {
+        if (import.meta.env.DEV) console.log("DataChannel closed");
+      };
 
       set({ connection: conn, dataChannel: channel, receiver });
 
@@ -163,8 +167,12 @@ export const useRTCStore = create<RTCStore>((set, get) => {
       conn.ondatachannel = (event) => {
         const channel = event.channel;
         channel.binaryType = "arraybuffer";
-        channel.onopen = () => console.log("DataChannel open");
-        channel.onclose = () => console.log("DataChannel closed");
+        channel.onopen = () => {
+          if (import.meta.env.DEV) console.log("DataChannel open");
+        };
+        channel.onclose = () => {
+          if (import.meta.env.DEV) console.log("DataChannel closed");
+        };
 
         channel.onmessage = (msg) => {
           onDataMessage?.(msg.data);
