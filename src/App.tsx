@@ -313,6 +313,59 @@ export default function App() {
             )}
           </div>
         )}
+
+        {/* Tutorial Section */}
+        <motion.div
+          initial={{ opacity: 0, y: 8 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.2 }}
+          className="mt-12 rounded-2xl border border-slate-200 bg-white/80 p-6 shadow-sm"
+        >
+          <h3 className="text-lg font-semibold tracking-tight mb-4">
+            How to use Just Send
+          </h3>
+          <div className="space-y-4">
+            <div className="flex items-start gap-3">
+              <div className="flex-shrink-0 w-6 h-6 rounded-full bg-slate-900 text-white text-sm font-medium flex items-center justify-center">
+                1
+              </div>
+              <div>
+                <p className="text-sm text-slate-700">
+                  Assuming this is the device you would be sending files with,
+                  open{" "}
+                  <code className="px-1.5 py-0.5 bg-slate-100 rounded text-xs font-mono">
+                    {window.location.origin}
+                  </code>{" "}
+                  on the device you'd like to receive files
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-start gap-3">
+              <div className="flex-shrink-0 w-6 h-6 rounded-full bg-slate-900 text-white text-sm font-medium flex items-center justify-center">
+                2
+              </div>
+              <div>
+                <p className="text-sm text-slate-700">
+                  A code would appear on this device, enter the correct code on
+                  the receiver to verify the connection.
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-start gap-3">
+              <div className="flex-shrink-0 w-6 h-6 rounded-full bg-slate-900 text-white text-sm font-medium flex items-center justify-center">
+                3
+              </div>
+              <div>
+                <p className="text-sm text-slate-700">
+                  Once connected, select files on this device and{" "}
+                  <strong>JUST SEND</strong>.
+                </p>
+              </div>
+            </div>
+          </div>
+        </motion.div>
       </main>
 
       {/* Modals / overlays */}
