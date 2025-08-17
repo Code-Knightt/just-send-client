@@ -336,7 +336,9 @@ export default function App() {
                   <code className="px-1.5 py-0.5 bg-slate-100 rounded text-xs font-mono">
                     {window.location.origin}
                   </code>{" "}
-                  on the device you'd like to receive files
+                  on the device you'd like to receive files. Make sure the
+                  receiever is on the <strong>same network</strong> as the
+                  sender.
                 </p>
               </div>
             </div>
@@ -344,6 +346,17 @@ export default function App() {
             <div className="flex items-start gap-3">
               <div className="flex-shrink-0 w-6 h-6 rounded-full bg-slate-900 text-white text-sm font-medium flex items-center justify-center">
                 2
+              </div>
+              <div>
+                <p className="text-sm text-slate-700">
+                  Find the device you'd like to send files to, and click on it.
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-start gap-3">
+              <div className="flex-shrink-0 w-6 h-6 rounded-full bg-slate-900 text-white text-sm font-medium flex items-center justify-center">
+                3
               </div>
               <div>
                 <p className="text-sm text-slate-700">
@@ -355,7 +368,7 @@ export default function App() {
 
             <div className="flex items-start gap-3">
               <div className="flex-shrink-0 w-6 h-6 rounded-full bg-slate-900 text-white text-sm font-medium flex items-center justify-center">
-                3
+                4
               </div>
               <div>
                 <p className="text-sm text-slate-700">
