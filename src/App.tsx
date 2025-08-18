@@ -66,7 +66,7 @@ export default function App() {
   const { name, initialize: initializeName } = useIdentityStore();
   const { message, sendData } = useWsStore();
   const [devices, setDevices] = useState<string[]>([]);
-  const { recvProgress, closeConnection } = useRTCStore();
+  const { recvProgress, closeConnection, sender, receiver } = useRTCStore();
 
   const [openFileModal, setOpenFileModal] = useState(false);
   const [code, setCode] = useState<string | undefined>();
@@ -392,7 +392,16 @@ export default function App() {
           code={code}
           onClose={() => {
             setCode(undefined);
-            closeConnection(sendData as SendData);
+            closeConnection();
+            if (sendData) {
+              sendData(
+                JSON.stringify({
+                  type: "close",
+                  sender: sender,
+                  receiver: receiver,
+                })
+              );
+            }
           }}
         />
       </Transition>
@@ -409,7 +418,16 @@ export default function App() {
         <FileModal
           onClose={(isReceiver) => {
             setOpenFileModal(false);
-            closeConnection(sendData as SendData, isReceiver);
+            closeConnection();
+            if (sendData) {
+              sendData(
+                JSON.stringify({
+                  type: "close",
+                  sender: isReceiver ? receiver : sender,
+                  receiver: isReceiver ? sender : receiver,
+                })
+              );
+            }
           }}
         />
       </Transition>

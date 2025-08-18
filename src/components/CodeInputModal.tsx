@@ -123,7 +123,7 @@ const CodeInputModal = forwardRef<HTMLDivElement, CodeInputModalProps>(
     const canSubmit = code.length === 4;
 
     return (
-      <Dialog as="div" className="relative z-10" onClose={onClose} ref={ref}>
+      <Dialog as="div" className="relative z-10" onClose={() => {}} ref={ref}>
         <div className="fixed inset-0 bg-black/30" aria-hidden="true" />
         <div className="fixed inset-0 flex items-center justify-center p-4">
           <DialogPanel className="w-full max-w-md bg-white p-6 rounded-2xl shadow-lg">

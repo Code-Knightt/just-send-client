@@ -61,7 +61,7 @@ interface RTCStore {
 
   // Internal sending state
   isSending: boolean; // NEW: guard
-  closeConnection: (sendData: SendData, reverseSender?: boolean) => void;
+  closeConnection: () => void;
 }
 
 // Helper to create a new RTCPeerConnection with ICE handling
@@ -559,7 +559,7 @@ export const useRTCStore = create<RTCStore>((set, get) => {
       }
     },
 
-    closeConnection: (sendData, reverseSender = false) => {
+    closeConnection: () => {
       const conn = get().connection;
       const channel = get().dataChannel;
       conn?.close();
@@ -567,14 +567,6 @@ export const useRTCStore = create<RTCStore>((set, get) => {
 
       const last = get().lastReceivedFile;
       if (last?.url) URL.revokeObjectURL(last.url);
-
-      sendData(
-        JSON.stringify({
-          type: "close",
-          sender: reverseSender ? get().receiver : get().sender,
-          receiver: reverseSender ? get().sender : get().receiver,
-        })
-      );
 
       set({
         connection: null,

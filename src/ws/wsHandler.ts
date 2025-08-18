@@ -84,7 +84,7 @@ export function useWsMessageRouter({
         setOpenFileModal(true);
       } catch (e) {
         console.error(e);
-        closeConnection(sendData, true);
+        closeConnection();
       }
     },
     [
@@ -138,26 +138,18 @@ export function useWsMessageRouter({
       toast.error(message.reason);
       setOpenFileModal(false);
       if (sendData) {
-        closeConnection(sendData, true);
+        closeConnection();
       }
     },
     [setOpenFileModal, closeConnection, sendData]
   );
 
   const closeHandler = useCallback(() => {
-    if (sendData) {
-      closeConnection(sendData);
-    }
     closeCodeInputModal();
     setCode(undefined);
     setOpenFileModal(false);
-  }, [
-    sendData,
-    closeConnection,
-    setCode,
-    setOpenFileModal,
-    closeCodeInputModal,
-  ]);
+    closeConnection();
+  }, [setCode, setOpenFileModal, closeCodeInputModal, closeConnection]);
 
   const handlers = useMemo(
     () => ({
